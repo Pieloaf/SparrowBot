@@ -1,0 +1,6 @@
+tokenServer/
+venv/
+bin/
+discord/.env
+discord/cogs/bugReports._py
+__pycache__/

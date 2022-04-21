@@ -1,0 +1,50 @@
+{
+    "regions": {
+        "eu-central-1": {
+            "abbr": "EU",
+            "flag": "🇪🇺",
+            "name": "Europe"
+        },
+        "us-east-2": {
+            "abbr": "NAE",
+            "flag": "🗽",
+            "name": "North America East"
+        },
+        "us-west-1": {
+            "abbr": "NAW",
+            "flag": "🇺🇸",
+            "name": "North America West"
+        },
+        "ap-northeast-1": {
+            "abbr": "AP",
+            "flag": "🇯🇵",
+            "name": "Asia Pacific"
+        },
+        "sa-east-1": {
+            "abbr": "SA",
+            "flag": "🇧🇷",
+            "name": "South America"
+        },
+        "ap-southeast-2": {
+            "abbr": "OCE",
+            "flag": "🇦🇺",
+            "name": "Oceania"
+        }
+    },
+    "levels": {
+        "1": 600,
+        "11": 800,
+        "32": 1200
+    },
+    "teamSize": [
+        1,
+        2,
+        3
+    ],
+    "teamCount": [
+        8,
+        16,
+        32,
+        64
+    ]
+}
