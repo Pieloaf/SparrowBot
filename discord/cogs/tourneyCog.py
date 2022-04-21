@@ -3,9 +3,9 @@ from discord.ext import commands
 from discord import ui, app_commands, Interaction
 from datetime import datetime, timedelta
 from interactionTemplates import YesNoView
-from itertools import chain
 import json
 import re
+from const import EmbedColor
 
 from tournaments import Tournament, Team
 from const import ServerId
@@ -41,8 +41,9 @@ class SignUpModal(discord.ui.Modal, title="Tournament Sign Up"):
         """check if interaction is valid"""
 
         # ensure user not already signed up
-        signedup = list(chain.from_iterable(
-            [team.members.keys for team in self.tournament.signedUp]))
+        signedup = [member["discord"]
+                    for team in self.tournament.teams for member in team.members]
+        print(signedup)
 
         if str(interaction.user.id) in signedup:
             await interaction.response.send_message(
@@ -58,7 +59,8 @@ class SignUpModal(discord.ui.Modal, title="Tournament Sign Up"):
                                                     ephemeral=True)
 
         # init members list with sign up user
-        members = [{str(interaction.user.id): dbUser['steamID']}]
+        members = [
+            {"discord": str(interaction.user.id), "steam": dbUser['steamID']}]
 
         # get other members
         for comp in interaction.data['components']:
@@ -95,7 +97,8 @@ class SignUpModal(discord.ui.Modal, title="Tournament Sign Up"):
                     f"**Error:** Each team member must be unique.", ephemeral=True)
                 return False
 
-            members.append({str(userid): dbUser['steamID']})
+            members.append(
+                {"discord": str(userid), "steam": dbUser['steamID']})
 
         self.members = members
         if self.tournament.teamCount == len(self.tournament.teams):
@@ -197,6 +200,7 @@ class Tourney(commands.Cog):
         super().__init__()
         self.client = client
         self.tournaments = []
+        self.tCategory = None
 
     # create command group
     tourneyGroup = app_commands.Group(
@@ -219,7 +223,10 @@ class Tourney(commands.Cog):
                 # create tournament and schedule checkins
                 await t.create(teamSize=tConf.teamSize, region=tConf.region)
                 self.client.loop.create_task(self.client.call_this_in(
-                    self.signup_or_checkin(t.chalTournament.id, 45, False), (event.start_time-timedelta(minutes=60).total_seconds())))
+                    self.signup_or_checkin,
+                    ((event.start_time-timedelta(minutes=60) -
+                     discord.utils.utcnow())).total_seconds(),
+                    t.chalTournament.id, 45, False))
             except Exception as e:
                 # handle errors
                 await self.client.log(f"Error Creating Tournament: {e}")
@@ -234,7 +241,7 @@ class Tourney(commands.Cog):
                                            f"Challonge URL: {t.chalTournament.full_challonge_url}")
 
             # set category perms for tournament
-            await discord.utils.get(self.client.tourneyServer.categories, name="Participants").set_permissions(
+            await self.tCategory.set_permissions(
                 t.role, view_channel=True, connect=True)
 
         async def noCallback(interaction):
@@ -273,13 +280,18 @@ class Tourney(commands.Cog):
 
     @ commands.command(name="tournament-list", aliases=["t-list"])
     @ commands.has_permissions(administrator=True)
-    async def listTourneys(self, ctx: commands.Context) -> None:
+    async def listTourneys(self, ctx: commands.Context, filter: str = None) -> None:
         """List all tournaments"""
         tournaments = await self.client.usefulCogs["db"].getDocuments(
             "tournaments", {})
 
         if not tournaments:
             await ctx.send("No tournaments found.")
+            return
+
+        if filter == "active":
+            tournaments = [t for t in self.tournaments]
+            await ctx.send(f"__Active Tournaments:__\n" + '\n'.join([f"{t.event.name} - {t.chalTournament.id}" for t in tournaments]))
             return
 
         await ctx.send("__Tournaments:__\n" + "\n".join([f"{t['name']} - {t['_id']}" for t in tournaments]))
@@ -289,37 +301,20 @@ class Tourney(commands.Cog):
     async def deleteTourney(self, ctx: commands.Context, tourneyId: int) -> None:
         """Delete a tournament"""
         # remove if active
-        active = [t for t in self.tournaments if t.chalTournament.id == tourneyId]
+
+        active: list[Tournament] = [
+            t for t in self.tournaments if t.chalTournament.id == tourneyId]
         if active:
             self.tournaments.remove(active[0])
-            await active[0].event.delete(
-                reason=f"Delete Tournament Requested by {ctx.author.name}")
 
-        # remove from db
-        tourney = await self.client.usefulCogs["db"].getDocument(
-            "tournaments", {"_id": tourneyId})
-
-        if not tourney:
-            await ctx.send(f"**Error:** Tournament {tourneyId} not found.")
-            return
-
-        await self.client.usefulCogs["db"].deleteDocument(
-            "tournaments", {"_id": tourneyId})
-
-        await self.client.log(f"Tournament {tourneyId} removed from db")
-
-        # delete challonge tournament
-        try:
-            chalT = await self.client.challonge.get_tournament(tourneyId)
-            await self.client.challonge.destroy_tournament(chalT)
-            await self.client.log(f"Challonge tournament {tourneyId} deleted")
-        except Exception as e:
-            await self.client.log(f"Error deleting challonge tournament: {e}")
-            await ctx.send(f"**Error:** Error getting challonge tournament {tourneyId}")
+        res = await Tournament.deleteTournament(self.client, tourneyId)
+        if not res:
+            await ctx.send(f"**Error:** Failed to delete tournament {tourneyId}. Check bot logs for more info.")
             return
 
         # response
         await ctx.send(f"Tournament {tourneyId} deleted")
+        await self.client.log(f"Tournament {tourneyId} deleted by {ctx.author}")
 
     @ commands.command(name="tournament-get", aliases=["t-get"])
     @ commands.has_permissions(administrator=True)
@@ -332,7 +327,7 @@ class Tourney(commands.Cog):
             await ctx.send(f"**Error:** Tournament {tourneyId} not found.")
             return
 
-        await ctx.send(f"__Tournament:__\n" + tourney)
+        await ctx.send(f"__Tournament:__\n" + "\n".join([f"{k}: {tourney[k]}" for k in tourney]))
 
     @ commands.command(name="tournament-teams", aliases=["t-teams"])
     @ commands.has_permissions(administrator=True)
@@ -449,12 +444,10 @@ class Tourney(commands.Cog):
                 return
 
             # get already signed up players
-            if signup:
-                signedup = list(chain.from_iterable(
-                    [team.members.keys for team in t.signedUp]))
-            else:
-                signedup = list(chain.from_iterable(
-                    [team.members.keys for team in t.checkedIn]))
+            signedup = [member["discord"]
+                        for team in t.teams for member in team.members]
+
+            print(signedup)
 
             # check if user is already signed up
             if str(interaction.user.id) in signedup:
@@ -476,7 +469,7 @@ class Tourney(commands.Cog):
                 # create team
                 team = Team(client=self.client, teamId=teamID)
                 try:
-                    await team.create(members=[{str(interaction.user.id): dbUser['steamID']}])
+                    await team.create(members=[{"discord": str(interaction.user.id), "steam": dbUser['steamID']}])
                     await t.signUpTeam(team)
                 except Exception as e:
                     await interaction.response.send_message(
@@ -490,28 +483,28 @@ class Tourney(commands.Cog):
             if success:
                 # update signup message
                 msg = await self.client.usefulChannels['signups'].fetch_message(t.states["signups"])
-                msg.embeds[0].fields[-1] = f"Sign ups close: __**<t:{int((datetime.now()+timedelta(minutes=duration)).timestamp())}:R>**__\n"\
-                    f"Teams Signed up: __**{len(t.signedUp)}/{t.teamCount}**__"
+                msg.embeds[0].fields[-1] = f"Sign ups close: __**<t:{int((discord.utils.utcnow()+timedelta(minutes=duration)).timestamp())}:R>**__\n"\
+                    f"Teams Signed up: __**{len(t.teams) if len(t.teams) <= t.teamCount else t.teamCount }/{t.teamCount}**__ ({(len(t.teams)-t.teamCount)+'reserves' if len(t.teams) > t.teamCount else ''})"
 
                 await msg.edit(embed=msg.embeds[0])
 
         async def checkinCB(interaction):
-            checkedIn = list(chain.from_iterable(
-                [team.members.keys for team in t.checkedIn]))
+            checkedIn = [member["discord"]
+                         for team in t.teams for member in team.members if team.state == "checkedIn"]
             if str(interaction.user.id) in checkedIn:
                 await interaction.response.send_message(
                     f"**Error:** Your team has already completed the check-in for this tournament.", ephemeral=True)
                 return
 
-            for team in self.teams:
-                if interaction.user.id in int(list(team.members.keys())[0]):
+            for team in t:
+                if interaction.user.id in [member["discord"] for member in team.members]:
                     t.checkInTeam(team)
                     break
 
             # update checkin message
             msg = await self.client.usefulChannels['signups'].fetch_message(t.states["checkins"])
-            msg.embeds[0].fields[-1] = f"Check-ins close: __**<t:{int((datetime.now()+timedelta(minutes=duration)).timestamp())}:R>**__\n"\
-                f"Teams Checked in: __**{len(t.checkedIn)}/{t.teamCount}**__"
+            msg.embeds[0].fields[-1] = f"Check-ins close: __**<t:{int((discord.utils.utcnow()+timedelta(minutes=duration)).timestamp())}:R>**__\n"\
+                f"Teams Checked in: __**{len(['x' for team in t.teams if team.state=='checkedIn'])}/{t.teamCount}**__"
 
         # creating buttons
         view = ui.View()
@@ -530,7 +523,7 @@ class Tourney(commands.Cog):
         # create embed
         embed = discord.Embed(title=f"{string.capitalize()} for {t.event.name}",
                               url=t.chalTournament.full_challonge_url,
-                              colour=discord.Colour(16766837),
+                              colour=EmbedColor,
                               description=f"{string.capitalize()} are now **open** for {t.event.name}!")
         embed.set_thumbnail(url=self.client.user.avatar.url)
         embed.add_field(name="Tournament Info",
@@ -540,7 +533,7 @@ class Tourney(commands.Cog):
         if signup:
             ping = discord.utils.get(self.client.server.roles, name=t.region)
             embed.add_field(name="Sign Up Info",
-                            value=f"Sign ups close: __**<t:{int((datetime.now()+timedelta(minutes=duration)).timestamp())}:R>**__\n"
+                            value=f"Sign ups close: __**<t:{int((discord.utils.utcnow()+timedelta(minutes=duration)).timestamp())}:R>**__\n"
                             f"Teams Signed up: __**0/{t.teamCount}**__\n"
                             f"Region: __**{t.region}**__\n"
                             f"Game Mode: __**{t.teamSize}v{t.teamSize}**__\n",
@@ -548,7 +541,7 @@ class Tourney(commands.Cog):
         else:
             ping = t.role.mention
             embed.add_field(name="Check In Info",
-                            value=f"Check-ins close: __**<t:{int((datetime.now()+timedelta(minutes=duration)).timestamp())}:R>**__\n"
+                            value=f"Check-ins close: __**<t:{int((discord.utils.utcnow()+timedelta(minutes=duration)).timestamp())}:R>**__\n"
                             f"Checked-in: __**0/{t.teamCount}**__",
                             inline=False)
 
@@ -559,7 +552,7 @@ class Tourney(commands.Cog):
 
         message = await self.client.usefulChannels[stateToChange].send(content=ping, embed=embed, view=view)
 
-        t.states[stateToChange] = message.id
+        await t.updateState(stateToChange, message.id)
         await self.client.log(f"{string.capitalize()} for {t.event.name} have started")
 
         self.task = self.client.loop.create_task(
@@ -586,7 +579,7 @@ class Tourney(commands.Cog):
             embed.remove_field(-1)
             # edit message and update state
             await message.edit(embed=embed, view=None)
-            t.states[stateToChange] = "ended"
+            await t.updateState(stateToChange, "ended")
 
         except Exception as e:
             await self.client.log(f"Error closing {string} for {t.event.name}: {e}")
@@ -614,8 +607,6 @@ class Tourney(commands.Cog):
         success = await self.signup_or_checkin(event_id, duration)
         if not success:
             await ctx.send(f"An error occured, please see bot logs for more")
-        else:
-            await ctx.send(f"Sign ups for {event_id} have started")
 
     @ commands.command(name='checkin')
     @ commands.has_permissions(administrator=True)
@@ -623,8 +614,6 @@ class Tourney(commands.Cog):
         success = await self.signup_or_checkin(event_id, duration, False)
         if not success:
             await ctx.send(f"An error occured, please see bot logs for more")
-        else:
-            await ctx.send(f"Check-ins for {event_id} have started")
 
 
 async def setup(client):
