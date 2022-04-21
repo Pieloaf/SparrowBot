@@ -30,7 +30,7 @@ class SparrowStats(app_commands.Group):
         """Get player rank"""
         uId = player.id if player else interaction.user.id
         user = await self.client.usefulCogs['db'].getDocument('users', {'_id': str(uId)})
-        if not user or 'steamId' not in user:
+        if not user or 'steamID' not in user:
             await interaction.response.send_message(
                 f"{player.mention + 'has ' if player else 'You have'} not yet linked their steam account.\n"
                 "See the pinned message in <#958874746177597483>", ephemeral=True)
