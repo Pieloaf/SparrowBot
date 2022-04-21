@@ -88,11 +88,6 @@ class Moderation(commands.Cog):
         await self.client.usefulCogs['db'].updateDocument('users', {'_id': user_id}, {'$unset': {'steamID': ''}})
         await ctx.send(f"{ctx.message.author.mention} has revoked <@{user_id}>'s linked steam account\nReason: {reason if reason else 'No reason provided'}")
 
-    @commands.Cog.listener()
-    async def on_join(self, member):
-        if member.created_at < datetime.now() - datetime.timedelta(days=1):
-            await self.client.usefulChannels['mod-general'].send(f"{member.mention} has joined the server.\nTheir account is {(datetime.now() - member.created_at).days} days old.\nKinda Sussy Wussy.")
-
 
 async def setup(client: commands.Bot):
     await client.add_cog(Moderation(client))

@@ -11,12 +11,12 @@ class SparrowBot(commands.Bot):
         super().__init__(command_prefix, **options)
         load_dotenv()
         self.server = None
+        self.tourneyServer = None
         self.usefulChannels = {}
         self.usefulEmotes = {}
         self.usefulRoles = {}
         self.usefulChannels = {}
         self.usefulCogs = {}
-        self.trello = None
         self.steam = None
         self.sparrow = None
         self.challonge = None
