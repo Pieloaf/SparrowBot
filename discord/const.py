@@ -33,3 +33,5 @@ UsefulCogs = {
 
 ChallongeSubdomain = "36c6316e0f2634af6bb686f2"
 EmbedColor = 16766835
+checkinTime = 45
+checkinBuffer = 15

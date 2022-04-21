@@ -89,8 +89,8 @@ class Prep(commands.Cog):
                 self.client.loop.create_task(self.client.call_this_in(
                     tCog.signup_or_checkin,
                     ((evt.start_time -
-                     timedelta(minutes=60)-discord.utils.utcnow())).total_seconds(),
-                    t['_id'], 45, False))
+                     timedelta(minutes=(checkinTime-checkinBuffer))-discord.utils.utcnow())).total_seconds(),
+                    t['_id'], checkinTime, False))
 
     async def prep(self):
         try:

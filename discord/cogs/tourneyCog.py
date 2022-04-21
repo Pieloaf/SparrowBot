@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from interactionTemplates import YesNoView
 import json
 import re
-from const import EmbedColor
+from const import EmbedColor, checkinBuffer, checkinTime
 
 from tournaments import Tournament, Team
 from const import ServerId
@@ -224,9 +224,9 @@ class Tourney(commands.Cog):
                 await t.create(teamSize=tConf.teamSize, region=tConf.region)
                 self.client.loop.create_task(self.client.call_this_in(
                     self.signup_or_checkin,
-                    ((event.start_time-timedelta(minutes=60) -
+                    ((event.start_time-timedelta(minutes=(checkinTime-checkinBuffer)) -
                      discord.utils.utcnow())).total_seconds(),
-                    t.chalTournament.id, 45, False))
+                    t.chalTournament.id, checkinTime, False))
             except Exception as e:
                 # handle errors
                 await self.client.log(f"Error Creating Tournament: {e}")
