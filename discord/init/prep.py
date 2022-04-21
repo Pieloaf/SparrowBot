@@ -1,7 +1,7 @@
+from datetime import datetime, timedelta
 import discord
 from discord.ext import commands
 from const import *
-import trello
 import steam
 import sparrow
 from importlib import reload
@@ -50,7 +50,6 @@ class Prep(commands.Cog):
             self.client.usefulEmotes[var] = emote
 
     async def init_api(self):
-        self.client.trello = trello.Trello(self.client)
         self.client.steam = steam.Steam(self.client)
         self.client.sparrow = sparrow.SparrowAPI(self.client)
 
@@ -58,20 +57,40 @@ class Prep(commands.Cog):
         tCog = self.client.get_cog('Tourney')
         db = self.client.get_cog('dbCog')
 
+        tCog.tCategory = discord.utils.get(
+            self.client.tourneyServer.categories, name="Participants")
+
         tourneys = await db.getDocuments('tournaments', {})
         for t in tourneys:
             if t['state']['inprogress'] == 'ended':
                 continue
+
             evt = discord.utils.get(
                 self.client.server.scheduled_events, id=t['event'])
+
+            if not evt:
+                await db.deleteDocument('tournaments', {'_id': t['_id']})
+                continue
+
+            if t['event'] in [t.event.id for t in tCog.tournaments]:
+                continue
+
             tObj = Tournament(self.client, evt)
-            await tObj.create(t['teamCount'], t['teamSize'],
-                              t['region'], t['groups'], t['_id'], t['role'])
+            try:
+                await tObj.create(t['teamSize'], t['region'], t['_id'], t['role'])
+            except Exception as e:
+                await self.client.log(f"Error loading tournament {t['_id']}: {e}\nRemoving tournament from database")
+                await db.deleteDocument('tournaments', {'_id': t['_id']})
 
             tCog.tournaments.append(tObj)
 
-        # schedule checkins
-        # self.client.loop.create_task(tCog.signup_or_checkin())
+            # schedule checkins
+            if evt.start_time > datetime.utcnow():
+                self.client.loop.create_task(self.client.call_this_in(
+                    tCog.signup_or_checkin,
+                    (evt.start_time-(evt.start_time -
+                     timedelta(minutes=5))).total_seconds(),
+                    t['_id'], 1, False))
 
     async def prep(self):
         try:
@@ -98,16 +117,19 @@ class Prep(commands.Cog):
     @commands.command(hidden=True)
     @commands.is_owner()
     async def reloadAPI(self, ctx, api):
-        if api == 'trello':
-            reload(trello)
-            self.client.trello = trello.Trello(self.client)
-        elif api == 'steam':
+        if api == 'steam':
             reload(steam)
             self.client.steam = steam.Steam(self.client)
         elif api == 'sparrow':
             reload(sparrow)
             self.client.sparrow = sparrow.SparrowAPI(self.client)
         await ctx.send(f'Reloaded {api} API functions')
+
+    @commands.command(hidden=True)
+    @commands.is_owner()
+    async def loadTournaments(self, ctx):
+        await self.init_tournaments()
+        await ctx.send('Done!')
 
 
 async def setup(client):
