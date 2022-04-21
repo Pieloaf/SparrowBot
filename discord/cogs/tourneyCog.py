@@ -224,7 +224,7 @@ class Tourney(commands.Cog):
                 await t.create(teamSize=tConf.teamSize, region=tConf.region)
                 self.client.loop.create_task(self.client.call_this_in(
                     self.signup_or_checkin,
-                    ((event.start_time-timedelta(minutes=(checkinTime-checkinBuffer)) -
+                    ((event.start_time-timedelta(minutes=(checkinTime+checkinBuffer)) -
                      discord.utils.utcnow())).total_seconds(),
                     t.chalTournament.id, checkinTime, False))
             except Exception as e:
@@ -357,14 +357,24 @@ class Tourney(commands.Cog):
         await ctx.send(f"__Team:__\n" + team)
 
 # TODO:
-# - make tournament-get command prettier
-# - make tournament-teams command prettier
-# - make tournament-get-team command prettier
-
+# - BIGGEST TODO: PERSISTENT VIEW FOR SIGNUP MESSAGE (DONT WANNA HAVE A FUCK UP IF THE BOT HAS TO RESTART BEFORE A TOURNAMENT)
 # - add pagination for the above commands
 
 # - add tournament-start function (on event start)
+#       when the tourney starts get all the matches in the tourney for round 1
+#       make a text channel for each match
+#       on code posted reply with win winner or loss reaction message
+#       wait for reply from each user on dispute ping mod, .winner [team] to manually score
+#       ask for next code repeat
+
+#       on all round 1 games complete get round two matches and repeat, etc
+
 # - add tournament-end function (on event end)
+#       get final standings
+#       remove text channel perms but keep channels in case of dispute
+#       command to delete all tournament channels when ready
+
+# - add delete tournament on event cancelled: EZ just call existing delete function but on listener for event cancelled
 
 # - add tournament-matches command (get tournament matches)
 
@@ -373,6 +383,12 @@ class Tourney(commands.Cog):
 # - add tournament-substitute-team command (substitute team in tournament)
 
 # - add tournament-standings command (get tournament standings) usable by everyone
+
+# - make tournament-get command prettier + filters eg by state
+# - make tournament-teams command prettier + filters eg signup, checkin, reserve, missing
+# - make tournament-get-team command prettier
+
+#
 
     async def signup_or_checkin(self, event_id: int, duration: int, signup: bool = True):
         #
@@ -496,7 +512,7 @@ class Tourney(commands.Cog):
                     f"**Error:** Your team has already completed the check-in for this tournament.", ephemeral=True)
                 return
 
-            for team in t:
+            for team in t.teams:
                 if interaction.user.id in [member["discord"] for member in team.members]:
                     t.checkInTeam(team)
                     break

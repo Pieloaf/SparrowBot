@@ -117,7 +117,8 @@ class Tournament:
             team.state = "signedup"
             for member in team.members:
                 await discord.utils.get(self.event.guild.members, id=int(member["discord"])).add_roles(self.role)
-            await self.chalTournament.add_participant(display_name=team.name, misc=team.id)
+            p = await self.chalTournament.add_participant(display_name=team.name, misc=team.id)
+            team.p_id = p['id']
         else:
             team.state = f"reserved {len(self.teams) - self.teamCount}"
 
@@ -142,14 +143,6 @@ class Tournament:
         except Exception as e:
             await self.client.log(f"Error updating team state in database: {e}")
             return None
-
-        # add to challonge
-        try:
-            p = await self.chalTournament.add_participant(display_name=team.name, misc=team.id)
-            team.p_id = p['id']
-        except challonge.APIException as e:
-            await self.client.log(f"Error adding team to challonge: {e}")
-            return -1
 
         await self.client.log(
             f"Team {team.name} [{team.id}] checked in for {self.event.name}")
