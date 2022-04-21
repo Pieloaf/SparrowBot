@@ -85,7 +85,7 @@ class Prep(commands.Cog):
             tCog.tournaments.append(tObj)
 
             # schedule checkins
-            if evt.start_time > datetime.utcnow():
+            if evt.start_time > discord.utils.utcnow():
                 self.client.loop.create_task(self.client.call_this_in(
                     tCog.signup_or_checkin,
                     (evt.start_time-(evt.start_time -
