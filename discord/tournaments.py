@@ -25,6 +25,36 @@ class Tournament:
             'inprogress': "pending",
         }
 
+    @staticmethod
+    async def deleteTournament(client, tId):
+        # delete db entry
+        t = client.usefulCogs['db'].db.get_collection(
+            'tournaments').find_one_and_delete({'_id': tId})
+        if not t:
+            await client.log(f"Error tournament {tId} not found in database")
+            return False
+
+        # delete event and role
+        evt = discord.utils.get(
+            client.server.scheduled_events, id=t['event'])
+        role = discord.utils.get(
+            client.server.roles, id=t['role'])
+
+        if evt:
+            await evt.delete()
+        if role:
+            await role.delete()
+
+        # delete challonge
+        try:
+            chalT = await client.challonge.get_tournament(tId)
+            await client.challonge.destroy_tournament(chalT)
+        except challonge.exceptions.ChallongeException:
+            await client.log(f"Error deleting tournament {tId} from challonge")
+            return False
+
+        return True
+
     async def create(self, teamSize, region, challonge_id=None, role_id=None):
         self.teamCount = 16
         self.teamSize = int(teamSize)
@@ -73,10 +103,21 @@ class Tournament:
 
         return True
 
+    async def updateState(self, state, value):
+        self.states[state] = value
+        try:
+            await self.client.usefulCogs['db'].updateDocument('tournaments', {'_id': self.chalTournament.id}, {"$set": {'state.' + state: value}})
+        except Exception as e:
+            await self.client.log(f"Error updating state in database: {e}")
+            return None
+
     async def signUpTeam(self, team):
         # add to db
         if len(self.teams) < self.teamCount:
             team.state = "signedup"
+            for member in team.members:
+                await discord.utils.get(self.event.guild.members, id=int(member["discord"])).add_roles(self.role)
+            await self.chalTournament.add_participant(display_name=team.name, misc=team.id)
         else:
             team.state = f"reserved {len(self.teams) - self.teamCount}"
 
@@ -231,7 +272,7 @@ class Team:
         self.members = members
         steamNames = []
         for member in members:
-            steamUser = await self.client.steam.getUser(list(member.values())[0])
+            steamUser = await self.client.steam.getUser(member["steam"])
             steamNames.append(steamUser['personaname'])
 
         self.name = ' & '.join(steamNames)
