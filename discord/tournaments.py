@@ -28,7 +28,7 @@ class Tournament:
     @staticmethod
     async def deleteTournament(client, tId):
         # delete db entry
-        t = client.usefulCogs['db'].db.get_collection(
+        t = client.db.db.get_collection(
             'tournaments').find_one_and_delete({'_id': tId})
         if not t:
             await client.log(f"Error tournament {tId} not found in database")
@@ -76,7 +76,7 @@ class Tournament:
                 start_at=self.event.start_time,
             )
             try:
-                await self.client.usefulCogs['db'].addDocument('tournaments', {
+                await self.client.db.addDocument('tournaments', {
                     '_id': self.chalTournament.id,
                     'event': self.event.id,
                     'name': self.event.name,
@@ -87,7 +87,6 @@ class Tournament:
                     'state': self.states,
                     'role': self.role.id,
                     'teams': [],
-                    # 'groups': self.groups,
                 })
 
             except Exception as e:
@@ -106,7 +105,9 @@ class Tournament:
     async def updateState(self, state, value):
         self.states[state] = value
         try:
-            await self.client.usefulCogs['db'].updateDocument('tournaments', {'_id': self.chalTournament.id}, {"$set": {'state.' + state: value}})
+            await self.client.db.updateDocument('tournaments',
+                                                {'_id': self.chalTournament.id},
+                                                {"$set": {'state.' + state: value}})
         except Exception as e:
             await self.client.log(f"Error updating state in database: {e}")
             return None
@@ -123,7 +124,9 @@ class Tournament:
             team.state = f"reserved {len(self.teams) - self.teamCount}"
 
         try:
-            await self.client.usefulCogs['db'].updateDocument('tournaments', {'_id': self.chalTournament.id}, {"$push": {'teams': team.jsonify()}})
+            await self.client.db.updateDocument('tournaments',
+                                                {'_id': self.chalTournament.id},
+                                                {"$push": {'teams': team.jsonify()}})
         except Exception as e:
             await self.client.log(f"Error adding team to database: {e}")
             return None
@@ -139,7 +142,10 @@ class Tournament:
 
         #  update db
         try:
-            await self.client.usefulCogs['db'].updateDocument('tournaments', {'_id': self.chalTournament.id, 'teams.id': team.id}, {"$set": {'teams.$.state': 'checkedIn'}})
+            await self.client.db.updateDocument('tournaments',
+                                                {'_id': self.chalTournament.id,
+                                                    'teams.id': team.id},
+                                                {"$set": {'teams.$.state': 'checkedIn'}})
         except Exception as e:
             await self.client.log(f"Error updating team state in database: {e}")
             return None
@@ -161,12 +167,16 @@ class Tournament:
         team: Team = team[0]
         # remove from signedup list
         self.teams.remove(team)
-        await self.client.usefulCogs['db'].updateDocument('tournaments', {'_id': self.chalTournament.id}, {"$pull": {'signedup': team.jsonify()}})
+        await self.client.db.updateDocument('tournaments',
+                                            {'_id': self.chalTournament.id},
+                                            {"$pull": {'signedup': team.jsonify()}})
         # remove from teams
         if self.states["signups"] == "ended":
             try:
                 self.teams.remove(team)
-                await self.client.usefulCogs['db'].updateDocument('tournaments', {'_id': self.chalTournament.id}, {"$pull": {'teams': team.jsonify()}})
+                await self.client.db.updateDocument('tournaments',
+                                                    {'_id': self.chalTournament.id},
+                                                    {"$pull": {'teams': team.jsonify()}})
             except ValueError:
                 pass
 
@@ -178,14 +188,18 @@ class Tournament:
                 await self.chalTournament.remove_participant(p)
             except challonge.APIException as e:
                 await self.client.log(f"Error removing team from challonge: {e}")
-                await self.client.usefulCogs['db'].updateDocument('tournaments', {'_id': self.chalTournament.id}, {"$pull": {'checkedIn': team.jsonify()}})
+                await self.client.db.updateDocument('tournaments',
+                                                    {'_id': self.chalTournament.id},
+                                                    {"$pull": {'checkedIn': team.jsonify()}})
 
     async def addTeam(self, team):
         await self.signUpTeam(team)
 
         if self.states["signups"] == "ended":
             self.teams.append(team)
-            await self.client.usefulCogs['db'].updateDocument('tournaments', {'_id': self.chalTournament.id}, {"$push": {'teams': team.jsonify()}})
+            await self.client.db.updateDocument('tournaments',
+                                                {'_id': self.chalTournament.id},
+                                                {"$push": {'teams': team.jsonify()}})
 
         if self.states["checkins"] != "pending":
             await self.checkInTeam(team)

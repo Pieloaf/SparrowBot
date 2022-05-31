@@ -85,7 +85,7 @@ class Moderation(commands.Cog):
     @commands.command()
     @commands.has_any_role('Moderator', 'Developer', 'Administrator')
     async def revokeSteam(self, ctx, user_id, *, reason=None):
-        await self.client.usefulCogs['db'].updateDocument('users', {'_id': user_id}, {'$unset': {'steamID': ''}})
+        await self.client.db.updateDocument('users', {'_id': user_id}, {'$unset': {'steamID': ''}})
         await ctx.send(f"{ctx.message.author.mention} has revoked <@{user_id}>'s linked steam account\nReason: {reason if reason else 'No reason provided'}")
 
 

@@ -16,7 +16,7 @@ class SparrowBot(commands.Bot):
         self.usefulEmotes = {}
         self.usefulRoles = {}
         self.usefulChannels = {}
-        self.usefulCogs = {}
+        self.db = None
         self.steam = None
         self.sparrow = None
         self.challonge = None

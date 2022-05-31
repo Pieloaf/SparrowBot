@@ -17,7 +17,7 @@ class SteamMgmt(app_commands.Group):
     @app_commands.describe(steam_url='Your Steam Profile URL')
     async def link(self, interaction: discord.Interaction, steam_url: str) -> None:
         """Link your Steam account"""
-        userExists = await self.client.usefulCogs['db'].getDocument('users', {
+        userExists = await self.client.db.getDocument('users', {
             '_id': str(interaction.user.id)
         })
         if userExists is not None and 'steamID' in userExists:
@@ -36,7 +36,7 @@ class SteamMgmt(app_commands.Group):
             steamID = await self.client.steam.resolveVanityUrl(parsedURL.group(2))
 
         user = await self.client.steam.getUser(steamID)
-        taken = await self.client.usefulCogs['db'].getDocument('users', {
+        taken = await self.client.db.getDocument('users', {
             'steamID': str(steamID)})
 
         if taken:
@@ -47,15 +47,15 @@ class SteamMgmt(app_commands.Group):
         async def yesBtnCB(interaction):
             """Do some DB shit here"""
             # getting user again here due to a bug when peope double click the button
-            user = await self.client.usefulCogs['db'].getDocument('users', {
+            user = await self.client.db.getDocument('users', {
                 '_id': str(interaction.user.id)
             })
             await interaction.response.defer()
             if user:
                 newData = {'$set': {'steamID': steamID}}
-                res = await self.client.usefulCogs['db'].updateDocument('users', user, newData)
+                res = await self.client.db.updateDocument('users', user, newData)
             else:
-                res = await self.client.usefulCogs['db'].addDocument('users', {
+                res = await self.client.db.addDocument('users', {
                     '_id': str(interaction.user.id),
                     'steamID': steamID,
                 })
@@ -79,7 +79,7 @@ class SteamMgmt(app_commands.Group):
     async def unlink(self, interaction: discord.Interaction) -> None:
         """Unlink your Steam account"""
 
-        if not await self.client.usefulCogs['db'].getDocument('users', {
+        if not await self.client.db.getDocument('users', {
             '_id': str(interaction.user.id)
         }):
             await interaction.response.send_message(
@@ -89,9 +89,10 @@ class SteamMgmt(app_commands.Group):
         async def yesBtnCB(interaction):
             """Do some DB shit here"""
             await interaction.response.defer()
-            res = await self.client.usefulCogs['db'].updateDocument('users', {
-                '_id': str(interaction.user.id)
-            }, {'$unset': {'steamID': ''}})
+            res = await self.client.db.updateDocument('users',
+                                                      {'_id': str(
+                                                          interaction.user.id)},
+                                                      {'$unset': {'steamID': ''}})
             if not res:
                 await interaction.edit_original_message(content=f'An error occured while trying to unlink your Steam account. Please let <@439364864763363363> know', view=None)
                 return

@@ -29,7 +29,7 @@ class SparrowStats(app_commands.Group):
     async def stats(self, interaction: discord.Interaction, player: discord.User = None) -> None:
         """Get player rank"""
         uId = player.id if player else interaction.user.id
-        user = await self.client.usefulCogs['db'].getDocument('users', {'_id': str(uId)})
+        user = await self.client.db.getDocument('users', {'_id': str(uId)})
         if not user or 'steamID' not in user:
             await interaction.response.send_message(
                 f"{player.mention + 'has ' if player else 'You have'} not yet linked their steam account.\n"

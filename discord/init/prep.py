@@ -37,13 +37,9 @@ class Prep(commands.Cog):
                     f"{roleName} role is missing")
             self.client.usefulRoles[var] = role
 
-    async def init_cogs(self):
-        for (var, cogName) in UsefulCogs:
-            cog = self.client.get_cog(cogName)
-            if not cog:
-                raise self.client.MissingSomething(
-                    f"{cogName} cog is missing")
-            self.client.usefulCogs[var] = cog
+    async def init_db(self):
+        db = self.client.get_cog('dbCog')
+        await db.init()
 
     async def init_emotes(self):
         for (var, emote) in UsefulEmotes:

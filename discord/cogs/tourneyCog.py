@@ -11,6 +11,93 @@ from tournaments import Tournament, Team
 from const import ServerId
 
 
+class PersistentView(discord.ui.View):
+    def __init__(self, test: str):
+        super().__init__(timeout=None)
+        self.test = test
+        self.btn = ui.Button(
+            label='Sign Up', style=discord.ButtonStyle.secondary, emoji='📝', custom_id=f"{test}_signup")
+        self.btn.callback = self.cb
+        self.add_item(self.btn)
+
+    async def cb(self, interaction):
+        print(f'test {self.test}')
+
+    @ discord.ui.button(label='Green', style=discord.ButtonStyle.green, custom_id='persistent_view:green')
+    async def green(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message('This is green.', ephemeral=True)
+
+    @ discord.ui.button(label='Red', style=discord.ButtonStyle.red, custom_id='persistent_view:red')
+    async def red(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message('This is red.', ephemeral=True)
+
+    @ discord.ui.button(label='Grey', style=discord.ButtonStyle.grey, custom_id='persistent_view:grey')
+    async def grey(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message('This is grey.', ephemeral=True)
+
+
+class SignUpView(discord.ui.View):
+    def __init__(self) -> None:
+        super().__init__()
+        btn = ui.Button(
+            label='Sign Up', style=discord.ButtonStyle.secondary, emoji='📝', custom_id='signup_view:signup')
+
+        async def signupCB(interaction):
+            # check user has steam linked
+            dbUser = await self.client.db.getDocument('users', {
+                '_id': str(interaction.user.id)
+            })
+
+            if not dbUser or not dbUser['steamID']:
+                await interaction.response.send_message(
+                    f"**Error:** You must have a linked steam account to sign up."
+                    "See the pinned video in <#958874746177597483> for details.", ephemeral=True)
+                return
+
+            # get already signed up players
+            signedup = [member["discord"]
+                        for team in t.teams for member in team.members]
+
+            # check if user is already signed up
+            if str(interaction.user.id) in signedup:
+                await interaction.response.send_message(
+                    f"**Error:** You have already completed the signups for this tournament.", ephemeral=True)
+                return
+
+            # signup the user(s)
+            success = None
+            if t.teamSize > 1:
+                signUp = SignUpModal(client=self.client, tournament=t)
+                await interaction.response.send_modal(signUp)
+                await signUp.wait()
+                if signUp.team:
+                    success = True
+            else:
+                # get team id
+                teamID = t.event.id + interaction.user.id
+                # create team
+                team = Team(client=self.client, teamId=teamID)
+                try:
+                    await team.create(members=[{"discord": str(interaction.user.id), "steam": dbUser['steamID']}])
+                    await t.signUpTeam(team)
+                except Exception as e:
+                    await interaction.response.send_message(
+                        f"An error occured creating the team, please contact a moderator", ephemeral=True)
+                    await self.client.log(f"Error creating team: {e}")
+                    return
+                await interaction.response.send_message("Signup successful!", ephemeral=True)
+                success = True
+
+            # if signup successful
+            if success:
+                # update signup message
+                msg = await self.client.usefulChannels['signups'].fetch_message(t.states["signups"])
+                msg.embeds[0].fields[-1] = f"Sign ups close: __**<t:{int((discord.utils.utcnow()+timedelta(minutes=duration)).timestamp())}:R>**__\n"\
+                    f"Teams Signed up: __**{len(t.teams) if len(t.teams) <= t.teamCount else t.teamCount }/{t.teamCount}**__ ({(len(t.teams)-t.teamCount)+'reserves' if len(t.teams) > t.teamCount else ''})"
+
+                await msg.edit(embed=msg.embeds[0])
+
+
 class SignUpModal(discord.ui.Modal, title="Tournament Sign Up"):
     def __init__(self, client: commands.Bot, tournament: Tournament) -> None:
         super().__init__()
@@ -50,7 +137,7 @@ class SignUpModal(discord.ui.Modal, title="Tournament Sign Up"):
                 f"You are already signed up for this tournament.", ephemeral=True)
 
         # ensure user has linked steam account
-        dbUser = await self.client.usefulCogs['db'].getDocument('users', {
+        dbUser = await self.client.db.getDocument('users', {
             '_id': str(interaction.user.id)
         })
         if not dbUser or not dbUser['steamID']:
@@ -84,7 +171,7 @@ class SignUpModal(discord.ui.Modal, title="Tournament Sign Up"):
                 return False
 
             # check if user has linked steam account
-            dbUser = await self.client.usefulCogs['db'].getDocument('users', {
+            dbUser = await self.client.db.getDocument('users', {
                 '_id': str(userid)
             })
             if not dbUser or not dbUser['steamID']:
@@ -446,10 +533,9 @@ class Tourney(commands.Cog):
         #
         # Sign up button callback
         #
-
         async def signupCB(interaction):
             # check user has steam linked
-            dbUser = await self.client.usefulCogs['db'].getDocument('users', {
+            dbUser = await self.client.db.getDocument('users', {
                 '_id': str(interaction.user.id)
             })
 
@@ -462,8 +548,6 @@ class Tourney(commands.Cog):
             # get already signed up players
             signedup = [member["discord"]
                         for team in t.teams for member in team.members]
-
-            print(signedup)
 
             # check if user is already signed up
             if str(interaction.user.id) in signedup:
@@ -633,4 +717,5 @@ class Tourney(commands.Cog):
 
 
 async def setup(client):
+    client.add_view(PersistentView("Pieloaf#1999"))
     await client.add_cog(Tourney(client))
